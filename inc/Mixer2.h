@@ -88,6 +88,7 @@ class Mixer2 : public DataSource
     int             bytesPerSampleOut;
     float           volume;
     uint32_t        orMask;
+    float           silenceLevel;
 
 public:
     /**
@@ -97,7 +98,7 @@ public:
      * @param sampleRange (quantization levels) the difference between the maximum and minimum sample level on the output channel
      * @param format The format the mixer will output (DATASTREAM_FORMAT_16BIT_UNSIGNED or DATASTREAM_FORMAT_16BIT_SIGNED)
      */
-    Mixer2(int sampleRate = CONFIG_MIXER_DEFAULT_SAMPLERATE, int sampleRange = CONFIG_MIXER_INTERNAL_RANGE, int format = DATASTREAM_FORMAT_16BIT_UNSIGNED);
+    Mixer2(float sampleRate = CONFIG_MIXER_DEFAULT_SAMPLERATE, int sampleRange = CONFIG_MIXER_INTERNAL_RANGE, int format = DATASTREAM_FORMAT_16BIT_UNSIGNED);
 
     /**
      * Destructor.
@@ -112,7 +113,7 @@ public:
      * @param sampleRate (samples per second) - if set to zero, defaults to the output sample rate of the Mixer
      * @param sampleRange (quantization levels) the difference between the maximum and minimum sample level on the input channel
      */
-    MixerChannel *addChannel(DataSource &stream, int sampleRate = 0, int sampleRange = CONFIG_MIXER_INTERNAL_RANGE);
+    MixerChannel *addChannel(DataSource &stream, float sampleRate = 0, int sampleRange = CONFIG_MIXER_INTERNAL_RANGE);
 
     /**
      * Provide the next available ManagedBuffer to our downstream caller, if available.
@@ -168,7 +169,7 @@ public:
      * @param sampleRate The new sample rate (samples per second) of the mixer output
      * @return DEVICE_OK on success.
      */
-    int setSampleRate(int sampleRate);
+    int setSampleRate(float sampleRate);
 
     /**
      * Determine the sample range used by this Synthesizer,
@@ -191,6 +192,15 @@ public:
      * @return DEVICE_OK on success.
      */
     int setOrMask(uint32_t mask);
+
+    /**
+     * Defines an optional sample level to generate during periods of silence.
+     * If undefined, the mixer defaults to a normalized level of 0.0f...1024.0f
+     *
+     * @param level The output level to apply for silence, in the range 0.0f...1024.0f
+     * @return DEVICE_OK on success or DEVICE_INVALID_PARAMETER.
+     */
+    int setSilenceLevel(float level);
 
     private:
     void configureChannel(MixerChannel *c);

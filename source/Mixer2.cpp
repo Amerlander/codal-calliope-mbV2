@@ -37,7 +37,7 @@ using namespace codal;
  * @param sampleRange (quantization levels) the difference between the maximum and minimum sample level on the output channel
  * @param format The format the mixer will output (DATASTREAM_FORMAT_16BIT_UNSIGNED or DATASTREAM_FORMAT_16BIT_SIGNED)
  */
-Mixer2::Mixer2(int sampleRate, int sampleRange, int format)
+Mixer2::Mixer2(float sampleRate, int sampleRange, int format)
 {
     // Set valid defaults.
     this->channels = NULL;
@@ -46,6 +46,7 @@ Mixer2::Mixer2(int sampleRate, int sampleRange, int format)
     this->bytesPerSampleOut = 2;
     this->volume = 1.0f;
     this->orMask = 0;
+    this->silenceLevel = 0.0f;
 
     // Attempt to configure output format to requested value
     this->setFormat(format);
@@ -84,7 +85,7 @@ void Mixer2::configureChannel(MixerChannel *c)
  * @param sampleRate (samples per second) - if set to zero, defaults to the output sample rate of the Mixer
  * @param sampleRange (quantization levels) the difference between the maximum and minimum sample level on the input channel
  */
-MixerChannel *Mixer2::addChannel(DataSource &stream, int sampleRate, int sampleRange)
+MixerChannel *Mixer2::addChannel(DataSource &stream, float sampleRate, int sampleRange)
 {
     MixerChannel *c = new MixerChannel();
     c->stream = &stream;
@@ -120,6 +121,7 @@ ManagedBuffer Mixer2::pull()
         mix[i] = 0.0f;
 
     MixerChannel *next;
+    bool silence = true;
 
     for (MixerChannel *ch = channels; ch; ch = next) {
         next = ch->next; // save next in case the current channel gets deleted
@@ -145,6 +147,9 @@ ManagedBuffer Mixer2::pull()
             int outLen = (int) (end - out);
             int inLen = ((ch->buffer.length() / ch->bytesPerSample) - ch->position) / ch->skip;
             int len =  min(outLen, inLen);
+
+            if (len)
+                silence = false;
 
             uint8_t *d = ch->in;
 
@@ -180,6 +185,13 @@ ManagedBuffer Mixer2::pull()
             }                
         }
     }       
+
+    // If we have silence, set output level to predefined value.
+    if (silence && silenceLevel != 0.0f)
+    {
+        for (int i=0; i<CONFIG_MIXER_BUFFER_SIZE/bytesPerSampleOut; i++)
+            mix[i] = silenceLevel;
+    }
 
     // Scale and pack to our output format
     ManagedBuffer output = ManagedBuffer(CONFIG_MIXER_BUFFER_SIZE);
@@ -292,10 +304,10 @@ int Mixer2::setSampleRange(uint16_t sampleRange)
  * @param sampleRate The new sample rate (samples per second) of the mixer output
  * @return DEVICE_OK on success.
  */
-int Mixer2::setSampleRate(int sampleRate)
+int Mixer2::setSampleRate(float sampleRate)
 {
     this->outputRate = (float)sampleRate;
-
+    
     // Recompute the sub/super sampling constants for each channel.    
     for (MixerChannel *c = channels; c; c=c->next)
         c->skip = c->rate / outputRate;
@@ -332,5 +344,21 @@ int Mixer2::getSampleRate()
 int Mixer2::setOrMask(uint32_t mask)
 {
     orMask = mask;
+    return DEVICE_OK;
+}
+
+/**
+ * Defines an optional sample level to generate during periods of silence.
+ * If undefined, the mixer defaults to a normalized level of 0.0f...1024.0f
+ *
+ * @param level The output level to apply for silence, in the range 0.0f...1024.0f
+ * @return DEVICE_OK on success or DEVICE_INVALID_PARAMETER.
+ */
+int Mixer2::setSilenceLevel(float level)
+{
+    if (level < 0 || level > 1024.0f)
+        return DEVICE_INVALID_PARAMETER;
+
+    silenceLevel = level - 512.0f;
     return DEVICE_OK;
 }
